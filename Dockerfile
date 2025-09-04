@@ -1,21 +1,15 @@
+# Stage 1: Build the Next.js app
 FROM node:18-bullseye AS builder
 WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY . .
+
 ENV NODE_OPTIONS="--openssl-legacy-provider"
-RUN yarn build
+RUN yarn build && yarn export
 
-# Production stage
-FROM node:18-bullseye-slim AS runner
-WORKDIR /app
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/yarn.lock ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/node_modules ./node_modules
-
-ENV NODE_ENV=production
-EXPOSE 3000
-CMD ["yarn", "start"]
+# Stage 2: Serve with a lightweight web server
+FROM nginx:alpine
+COPY --from=builder /app/out /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

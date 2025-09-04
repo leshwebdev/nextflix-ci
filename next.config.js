@@ -2,14 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    unoptimized: true,        // DISABLE all Next.js image optimization
-    loader: 'default',        // keep the default loader
-    domains: [],              // allow no external domains
+    unoptimized: true, // disable image optimization for static export
   },
-  webpack: (config) => {
-    config.resolve.fallback = { fs: false, path: false, os: false }; // fix WASM imports
-    return config;
-  },
+  output: 'export', // optional for Next 13+
 };
 
 module.exports = nextConfig;
