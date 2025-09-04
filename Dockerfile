@@ -6,15 +6,16 @@ COPY . .
 ENV NODE_OPTIONS="--openssl-legacy-provider"
 RUN yarn build
 
-# Runner stage
-FROM node:18-bullseye AS runner
+# Production stage
+FROM node:18-bullseye-slim AS runner
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/yarn.lock ./
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.js ./
 COPY --from=builder /app/node_modules ./node_modules
 
+ENV NODE_ENV=production
 EXPOSE 3000
-
 CMD ["yarn", "start"]
