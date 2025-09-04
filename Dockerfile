@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY . .
+# Enable legacy OpenSSL provider so Next.js can build with Node 18+
+ENV NODE_OPTIONS="--openssl-legacy-provider"
 RUN yarn build
 
 FROM node:18-alpine AS runner

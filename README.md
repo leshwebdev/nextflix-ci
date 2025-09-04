@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Nextflix 
 A simple Netflix Clone made using [Next.js](https://nextjs.org/) ⚡
 
@@ -32,3 +33,6 @@ It runs the app in the development mode.<br />
 Open [http://localhost:3000](http://localhost:3000) to view it in the browser. 
 
 
+=======
+Hello
+>>>>>>> f7845b87be0b48f381fc88967e1c0766d4e32eba
