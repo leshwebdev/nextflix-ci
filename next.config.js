@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,   // keep strict mode enabled
+  reactStrictMode: true,
   images: {
-    unoptimized: true,     // disable built-in image optimization to fix .wasm build error
+    unoptimized: true, // DISABLE image optimization
   },
 };
 
