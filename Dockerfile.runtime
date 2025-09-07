@@ -1,0 +1,20 @@
+# Dockerfile.runtime
+FROM node:16-bullseye-slim AS runtime
+WORKDIR /app
+
+# Install only production node modules
+COPY package.json yarn.lock ./
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g yarn@1.22.19 \
+    && yarn install --production --frozen-lockfile
+
+# Copy build artifacts (must exist before building the image)
+COPY .next ./.next
+COPY public ./public
+COPY next.config.js ./next.config.js
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+CMD ["yarn", "start"]
