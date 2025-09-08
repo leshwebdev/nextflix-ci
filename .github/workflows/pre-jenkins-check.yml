@@ -1,0 +1,25 @@
+name: Pre-Jenkins Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  basic-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Verify project files exist
+        run: |
+          if [ ! -f package.json ]; then
+            echo "Error: package.json missing!"
+            exit 1
+          fi
+          if [ ! -f Dockerfile ]; then
+            echo "Error: Dockerfile missing!"
+            exit 1
+          fi
+          echo "Basic file check passed."
