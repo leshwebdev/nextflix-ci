@@ -1,0 +1,34 @@
+name: Pre-Jenkins Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  basic-check:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout the repo
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Simple file checks
+      - name: Verify project files exist
+        run: |
+          if [ ! -f package.json ]; then
+            echo "Error: package.json missing!"
+            exit 1
+          fi
+          if [ ! -f Dockerfile ]; then
+            echo "Error: Dockerfile missing!"
+            exit 1
+          fi
+          echo "Basic file check passed."
+
+      # Step 3: Optional simple code check (no npm install)
+      - name: Check for forbidden TODOs
+        run: |
+          TODO_COUNT=$(grep -r "TODO" . | wc -l)
+          echo "Found $TODO_COUNT TODOs in the codebase."
