@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // Jenkins secret for DockerHub (username+password)
-        TMDB_KEY = credentials('tmdb-key') // Jenkins secret text for your API key
-        DOCKER_IMAGE = "leshwebdev/nextflix"  // Your DockerHub repo
-        DOCKER_TAG = "staging"
+        TMDB_KEY = credentials('tmdb-key')               // Jenkins secret for your API key
         EC2_HOST = "ubuntu@63.177.234.233"
-        SSH_KEY = credentials('ec2-ssh-key') // Jenkins SSH private key credential
+        SSH_KEY = credentials('ec2-ssh-key')             // Jenkins SSH private key credential
+        DOCKER_IMAGE = "leshwebdev/nextflix"
+        DOCKER_TAG = "staging"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // DockerHub creds
     }
 
     stages {
@@ -18,43 +18,39 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build on Staging') {
             steps {
-                script {
+                sshagent(['ec2-ssh-key']) {
                     sh """
-                    docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
+                    ssh -o StrictHostKeyChecking=no $EC2_HOST \\
+                    'cd ~/nextflix && \\
+                     docker build -t $DOCKER_IMAGE:$DOCKER_TAG .'
                     """
                 }
             }
         }
 
-        stage('Login to DockerHub') {
+        stage('Push to DockerHub') {
             steps {
-                script {
+                sshagent(['ec2-ssh-key']) {
                     sh """
-                    echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin
+                    ssh -o StrictHostKeyChecking=no $EC2_HOST \\
+                    'echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin && \\
+                     docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:$DOCKER_TAG && \\
+                     docker push $DOCKER_IMAGE:$DOCKER_TAG'
                     """
                 }
             }
         }
 
-        stage('Push Image to DockerHub') {
+        stage('Deploy on Staging') {
             steps {
-                script {
-                    sh "docker push $DOCKER_IMAGE:$DOCKER_TAG"
-                }
-            }
-        }
-
-        stage('Deploy to EC2') {
-            steps {
-                script {
+                sshagent(['ec2-ssh-key']) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no -i $SSH_KEY $EC2_HOST \\
-                        'docker pull $DOCKER_IMAGE:$DOCKER_TAG &&
-                         docker stop nextflix-staging || true &&
-                         docker rm nextflix-staging || true &&
-                         docker run -d --name nextflix-staging -p 3000:3000 -e TMDB_KEY=$TMDB_KEY $DOCKER_IMAGE:$DOCKER_TAG'
+                    ssh -o StrictHostKeyChecking=no $EC2_HOST \\
+                    'docker stop nextflix-staging || true && \\
+                     docker rm nextflix-staging || true && \\
+                     docker run -d --name nextflix-staging -p 3000:3000 -e TMDB_KEY=$TMDB_KEY $DOCKER_IMAGE:$DOCKER_TAG'
                     """
                 }
             }
