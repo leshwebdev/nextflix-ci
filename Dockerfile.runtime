@@ -1,20 +1,20 @@
-# Dockerfile.runtime
 FROM node:16-bullseye-slim AS runtime
+
 WORKDIR /app
 
-# Install only production node modules
+# Copy only dependency files first (better cache layer)
 COPY package.json yarn.lock ./
+
+# Install dependencies (runtime only)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g yarn@1.22.19 \
     && yarn install --production --frozen-lockfile
 
-# Copy build artifacts (must exist before building the image)
-COPY .next ./.next
-COPY public ./public
-COPY next.config.js ./next.config.js
+# Copy the rest of the app
+COPY . .
 
-ENV NODE_ENV=production
+# Expose Next.js default port
 EXPOSE 3000
 
+# Run the exported static app with Next.js server
 CMD ["yarn", "start"]
