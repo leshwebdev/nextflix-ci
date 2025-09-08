@@ -6,9 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit",
-    "test": "jest"
+    "lint": "next lint"
   },
   "dependencies": {
     "axios": "^0.21.1",
@@ -29,5 +27,13 @@
     "eslint-config-next": "11.0.1",
     "prettier": "^2.3.2",
     "typescript": "4.3.5"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "jest"
   }
 }
