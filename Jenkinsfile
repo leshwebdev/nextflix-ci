@@ -5,7 +5,7 @@ pipeline {
         TMDB_KEY = credentials('tmdb-key')               // Jenkins secret for your API key
         EC2_HOST = "ubuntu@63.177.234.233"
         SSH_KEY = credentials('ec2-ssh-key')             // Jenkins SSH private key credential
-        DOCKER_IMAGE = "leshwebdev/nextflix"
+        DOCKER_IMAGE = "ohadlesh/nextflix"
         DOCKER_TAG = "staging"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // DockerHub creds
     }
