@@ -8,7 +8,7 @@ pipeline {
         DOCKER_IMAGE = "ohadlesh/nextflix"
         DOCKER_TAG = "staging"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // DockerHub creds
-        GITHUB_TOKEN = credentials('github-token')      // GitHub PAT with repo:status scope
+        GITHUB_TOKEN = credentials('github-token')      // GitHub PAT with repo access
         REPO = "leshwebdev/nextflix-ci"
         BRANCH = "main"
     }
@@ -21,38 +21,39 @@ pipeline {
             }
         }
 
-        stage('Check GitHub Pre-Check') {
+        stage('Wait for GitHub Workflow') {
             steps {
                 script {
                     def sha = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
                     echo "Latest commit SHA: ${sha}"
 
-                    // Retry loop
-                    def status = "pending"
+                    def conclusion = "pending"
                     int retries = 0
-                    int maxRetries = 3      // Number of attempts
-                    int sleepSec = 5        // Wait between retries (seconds)
+                    int maxRetries = 3      // retry up to 20 times
+                    int sleepSec = 5        // wait 10s between attempts
 
-                    while (status == "pending" && retries < maxRetries) {
-                        status = sh(script: """
+                    while ((conclusion == "pending" || conclusion == "") && retries < maxRetries) {
+                        // Query the Checks API
+                        conclusion = sh(script: """
                             curl -s -H "Authorization: token $GITHUB_TOKEN" \\
-                            https://api.github.com/repos/$REPO/commits/$sha/status \\
-                            | grep -o '"state": *"[^"]*"' | head -n 1 | sed 's/.*"\\([^"]*\\)".*/\\1/'
+                                 -H "Accept: application/vnd.github+json" \\
+                                 https://api.github.com/repos/$REPO/commits/$sha/check-runs \\
+                            | grep -o '"conclusion": *"[^"]*"' | head -n 1 | sed 's/.*"\\\\([^"]*\\\\)".*/\\\\1/'
                         """, returnStdout: true).trim()
 
-                        if (status == "pending") {
-                            echo "GitHub pre-check still pending. Waiting ${sleepSec}s..."
+                        if (conclusion == "pending" || conclusion == "") {
+                            echo "GitHub workflow still running. Waiting ${sleepSec}s..."
                             sleep sleepSec
                             retries++
                         }
                     }
 
-                    echo "GitHub pre-check status: ${status}"
+                    echo "GitHub workflow conclusion: ${conclusion}"
 
-                    if (status != "success") {
-                        error("GitHub pre-check failed or did not complete in time. Aborting pipeline.")
+                    if (conclusion != "success") {
+                        error("GitHub workflow did not complete successfully. Aborting pipeline.")
                     } else {
-                        echo "GitHub pre-check passed. Continuing..."
+                        echo "GitHub workflow passed. Proceeding with build."
                     }
                 }
             }
