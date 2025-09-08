@@ -25,7 +25,7 @@ export default function Home(): React.ReactElement {
         <Image src={LoginBg} alt='background image' placeholder='blur' layout='fill' className={styles.main__bgImage} />
         <div className={styles.main__card}>
           <h1>
-            Nextflix
+            Nextflix (Staging Deployment Test)
           </h1>
           <p>A simple Netflix clone built using Next.js</p>
           <div className={styles.button} onClick={onSignIn}>Sign in</div>
