@@ -2,13 +2,13 @@ pipeline {
     agent any
 
     environment {
-        TMDB_KEY = credentials('tmdb-key')
+        TMDB_KEY = credentials('tmdb-key')               // Jenkins secret for your API key
         EC2_HOST = "ubuntu@63.177.234.233"
-        SSH_KEY = credentials('ec2-ssh-key')
+        SSH_KEY = credentials('ec2-ssh-key')             // Jenkins SSH private key credential
         DOCKER_IMAGE = "ohadlesh/nextflix"
         DOCKER_TAG = "staging"
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
-        GITHUB_TOKEN = credentials('github-token') // GitHub PAT with repo:status scope
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // DockerHub creds
+        GITHUB_TOKEN = credentials('github-token')      // GitHub PAT with repo:status scope
         REPO = "leshwebdev/nextflix-ci"
         BRANCH = "main"
     }
@@ -27,19 +27,30 @@ pipeline {
                     def sha = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
                     echo "Latest commit SHA: ${sha}"
 
-                    // Query GitHub API for commit status and parse using grep/sed
-                    def status = sh(script: """
-                        curl -s -H "Authorization: token $GITHUB_TOKEN" \\
-                        https://api.github.com/repos/$REPO/commits/$sha/status \\
-                        | grep -o '"state": *"[^"]*"' \\
-                        | head -n 1 \\
-                        | sed 's/.*"\\([^"]*\\)".*/\\1/'
-                    """, returnStdout: true).trim()
+                    // Retry loop
+                    def status = "pending"
+                    int retries = 0
+                    int maxRetries = 3      // Number of attempts
+                    int sleepSec = 5        // Wait between retries (seconds)
+
+                    while (status == "pending" && retries < maxRetries) {
+                        status = sh(script: """
+                            curl -s -H "Authorization: token $GITHUB_TOKEN" \\
+                            https://api.github.com/repos/$REPO/commits/$sha/status \\
+                            | grep -o '"state": *"[^"]*"' | head -n 1 | sed 's/.*"\\([^"]*\\)".*/\\1/'
+                        """, returnStdout: true).trim()
+
+                        if (status == "pending") {
+                            echo "GitHub pre-check still pending. Waiting ${sleepSec}s..."
+                            sleep sleepSec
+                            retries++
+                        }
+                    }
 
                     echo "GitHub pre-check status: ${status}"
 
                     if (status != "success") {
-                        error("GitHub pre-check failed. Aborting pipeline.")
+                        error("GitHub pre-check failed or did not complete in time. Aborting pipeline.")
                     } else {
                         echo "GitHub pre-check passed. Continuing..."
                     }
