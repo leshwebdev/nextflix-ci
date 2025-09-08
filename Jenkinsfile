@@ -27,21 +27,21 @@ pipeline {
                     def sha = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
                     echo "Latest commit SHA: ${sha}"
 
-                    def conclusion = "pending"
+                    def conclusion = ""
                     int retries = 0
                     int maxRetries = 3      // retry up to 20 times
                     int sleepSec = 5        // wait 10s between attempts
 
-                    while ((conclusion == "pending" || conclusion == "") && retries < maxRetries) {
-                        // Query the Checks API and extract just the conclusion value
+                    while ((conclusion == "" || conclusion == "null") && retries < maxRetries) {
+                        // Query the GitHub check-runs API and extract the first conclusion using jq
                         conclusion = sh(script: """
                             curl -s -H "Authorization: token $GITHUB_TOKEN" \\
                                  -H "Accept: application/vnd.github+json" \\
                                  https://api.github.com/repos/$REPO/commits/$sha/check-runs \\
-                            | grep -o '\\\\"conclusion\\\\": *\\\\\"[^\\\\"]*\\\\\"' | head -n 1 | sed 's/.*: *"\\\\([^"]*\\\\)".*/\\\\1/'
+                            | jq -r '.check_runs[0].conclusion'
                         """, returnStdout: true).trim()
 
-                        if (conclusion == "pending" || conclusion == "") {
+                        if (conclusion == "" || conclusion == "null") {
                             echo "GitHub workflow still running. Waiting ${sleepSec}s..."
                             sleep sleepSec
                             retries++
