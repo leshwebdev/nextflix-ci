@@ -23,9 +23,9 @@ pipeline {
                 sshagent(['ec2-ssh-key']) {
                     sh """
                     ssh -o StrictHostKeyChecking=no $EC2_HOST \\
-                    cd ~/nextflix-ci \\
-                    git pull origin main
-                    docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
+                    'cd ~/nextflix-ci && \\
+                     git pull origin main && \\
+                     docker build -t $DOCKER_IMAGE:$DOCKER_TAG .'
                     """
                 }
             }
