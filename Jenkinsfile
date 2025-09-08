@@ -38,7 +38,7 @@ pipeline {
                             curl -s -H "Authorization: token $GITHUB_TOKEN" \\
                                  -H "Accept: application/vnd.github+json" \\
                                  https://api.github.com/repos/$REPO/commits/$sha/check-runs \\
-                            | grep -o '"conclusion": *"[^"]*"' | head -n 1 | sed 's/.*: *"\\\\([^"]*\\\\)".*/\\\\1/'
+                            | grep -o '\\\\"conclusion\\\\": *\\\\\"[^\\\\"]*\\\\\"' | head -n 1 | sed 's/.*: *"\\\\([^"]*\\\\)".*/\\\\1/'
                         """, returnStdout: true).trim()
 
                         if (conclusion == "pending" || conclusion == "") {
