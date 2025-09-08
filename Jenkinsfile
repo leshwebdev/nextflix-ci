@@ -33,12 +33,12 @@ pipeline {
                     int sleepSec = 5        // wait 10s between attempts
 
                     while ((conclusion == "pending" || conclusion == "") && retries < maxRetries) {
-                        // Query the Checks API
+                        // Query the Checks API and extract just the conclusion value
                         conclusion = sh(script: """
                             curl -s -H "Authorization: token $GITHUB_TOKEN" \\
                                  -H "Accept: application/vnd.github+json" \\
                                  https://api.github.com/repos/$REPO/commits/$sha/check-runs \\
-                            | grep -o '"conclusion": *"[^"]*"' | head -n 1 | sed 's/.*"\\\\([^"]*\\\\)".*/\\\\1/'
+                            | grep -o '"conclusion": *"[^"]*"' | head -n 1 | sed 's/.*: *"\\\\([^"]*\\\\)".*/\\\\1/'
                         """, returnStdout: true).trim()
 
                         if (conclusion == "pending" || conclusion == "") {
