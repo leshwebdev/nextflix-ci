@@ -2,22 +2,25 @@ pipeline {
     agent any
 
     environment {
-        TMDB_KEY = credentials('tmdb-key')               // Jenkins secret for your API key
-        EC2_HOST = "ubuntu@63.177.234.233"
-        SSH_KEY = credentials('ec2-ssh-key')             // Jenkins SSH private key credential
+        TMDB_KEY = credentials('tmdb-key')               // Jenkins secret for API key
+        STAGING_HOST = "ubuntu@63.177.234.233"
+        PRODUCTION_HOST = "ubuntu@18.198.187.28"
+        SSH_KEY = credentials('ec2-ssh-key')            // Jenkins SSH private key
         DOCKER_IMAGE = "ohadlesh/nextflix"
-        DOCKER_TAG = "staging"
+        DOCKER_TAG_STAGING = "staging"
+        DOCKER_TAG_PRODUCTION = "production"
+        DOCKER_TAG_LATEST = "latest"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // DockerHub creds
-        GITHUB_TOKEN = credentials('github-token')      // GitHub PAT with repo access
+        GITHUB_TOKEN = credentials('github-token')     // Personal access token
         REPO = "leshwebdev/nextflix-ci"
-        BRANCH = "main"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                git branch: "${BRANCH}",
-                    url: "https://github.com/${REPO}.git"
+                git branch: 'main',
+                    url: 'https://github.com/leshwebdev/nextflix-ci.git'
             }
         }
 
@@ -29,8 +32,8 @@ pipeline {
 
                     def conclusion = ""
                     int retries = 0
-                    int maxRetries = 3      // retry up to 20 times
-                    int sleepSec = 5        // wait 10s between attempts
+                    int maxRetries = 3      // retry up to 3 times
+                    int sleepSec = 5        // wait 5s between attempts
 
                     while ((conclusion == "" || conclusion == "null") && retries < maxRetries) {
                         // Query the GitHub check-runs API and extract the first conclusion using jq
@@ -59,41 +62,79 @@ pipeline {
             }
         }
 
-        stage('Build on Staging') {
+        stage('Determine Deployment Target') {
             steps {
-                sshagent(['ec2-ssh-key']) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no $EC2_HOST \\
-                    'cd ~/nextflix-ci && \\
-                     git pull origin main && \\
-                     docker build -t $DOCKER_IMAGE:$DOCKER_TAG .'
-                    """
+                script {
+                    // Detect if this is a merge event
+                    env.IS_PR_MERGE = sh(
+                        script: 'git log -1 --pretty=%s | grep -q "Merge pull request" && echo "true" || echo "false"',
+                        returnStdout: true
+                    ).trim()
+                    echo "Is PR merge: ${env.IS_PR_MERGE}"
                 }
             }
         }
 
-        stage('Push to DockerHub') {
+        stage('Build and Push Docker Image') {
             steps {
                 sshagent(['ec2-ssh-key']) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no $EC2_HOST \\
-                    'echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin && \\
-                     docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:$DOCKER_TAG && \\
-                     docker push $DOCKER_IMAGE:$DOCKER_TAG'
-                    """
+                    script {
+                        if (env.IS_PR_MERGE == "true") {
+                            // Build production image on staging EC2
+                            sh """
+                            ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
+                              'cd ~/nextflix-ci && git pull origin main && \\
+                               docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG_PRODUCTION} -t ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST} .' 
+                            """
+                            // Push production image with both production and latest tags
+                            sh """
+                            ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
+                              'echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin && \\
+                               docker push ${DOCKER_IMAGE}:${DOCKER_TAG_PRODUCTION} && \\
+                               docker push ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST}' 
+                            """
+                        } else {
+                            // Normal push to main → build staging image
+                            sh """
+                            ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
+                              'cd ~/nextflix-ci && git pull origin main && \\
+                               docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG_STAGING} .' 
+                            """
+                            // Push staging image
+                            sh """
+                            ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
+                              'echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin && \\
+                               docker push ${DOCKER_IMAGE}:${DOCKER_TAG_STAGING}' 
+                            """
+                        }
+                    }
                 }
             }
         }
 
-        stage('Deploy on Staging') {
+        stage('Deploy') {
             steps {
                 sshagent(['ec2-ssh-key']) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no $EC2_HOST \\
-                    'docker stop nextflix-staging || true && \\
-                     docker rm nextflix-staging || true && \\
-                     docker run -d --name nextflix-staging -p 3000:3000 -e TMDB_KEY=$TMDB_KEY $DOCKER_IMAGE:$DOCKER_TAG'
-                    """
+                    script {
+                        if (env.IS_PR_MERGE == "true") {
+                            // Deploy to production
+                            sh """
+                            ssh -o StrictHostKeyChecking=no ${PRODUCTION_HOST} \\
+                              'docker pull ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST} && \\
+                               docker stop nextflix-production || true && \\
+                               docker rm nextflix-production || true && \\
+                               docker run -d --name nextflix-production -p 3000:3000 -e TMDB_KEY=${TMDB_KEY} ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST}'
+                            """
+                        } else {
+                            // Deploy to staging
+                            sh """
+                            ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
+                              'docker stop nextflix-staging || true && \\
+                               docker rm nextflix-staging || true && \\
+                               docker run -d --name nextflix-staging -p 3000:3000 -e TMDB_KEY=${TMDB_KEY} ${DOCKER_IMAGE}:${DOCKER_TAG_STAGING}'
+                            """
+                        }
+                    }
                 }
             }
         }
