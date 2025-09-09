@@ -13,6 +13,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // DockerHub creds
         GITHUB_TOKEN = credentials('github-token')     // Personal access token
         REPO = "leshwebdev/nextflix-ci"
+        SLACK_WEBHOOK = credentials('slack-webhook')  // Slack Incoming Webhook URL
     }
 
     stages {
@@ -32,11 +33,10 @@ pipeline {
 
                     def conclusion = ""
                     int retries = 0
-                    int maxRetries = 3      // retry up to 3 times
-                    int sleepSec = 5        // wait 5s between attempts
+                    int maxRetries = 3
+                    int sleepSec = 5
 
                     while ((conclusion == "" || conclusion == "null") && retries < maxRetries) {
-                        // Query the GitHub check-runs API and extract the first conclusion using jq
                         conclusion = sh(script: """
                             curl -s -H "Authorization: token $GITHUB_TOKEN" \\
                                  -H "Accept: application/vnd.github+json" \\
@@ -65,7 +65,6 @@ pipeline {
         stage('Determine Deployment Target') {
             steps {
                 script {
-                    // Detect if this is a merge event
                     env.IS_PR_MERGE = sh(
                         script: 'git log -1 --pretty=%s | grep -q "Merge pull request" && echo "true" || echo "false"',
                         returnStdout: true
@@ -86,7 +85,7 @@ pipeline {
                               'cd ~/nextflix-ci && git pull origin main && \\
                                docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG_PRODUCTION} -t ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST} .' 
                             """
-                            // Push production image with both production and latest tags
+                            // Push production image
                             sh """
                             ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
                               'echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin && \\
@@ -94,7 +93,7 @@ pipeline {
                                docker push ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST}' 
                             """
                         } else {
-                            // Normal push to main → build staging image
+                            // Build staging image
                             sh """
                             ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
                               'cd ~/nextflix-ci && git pull origin main && \\
@@ -116,24 +115,35 @@ pipeline {
             steps {
                 sshagent(['ec2-ssh-key']) {
                     script {
+                        def deployTarget = ""
+                        def tag = ""
+                        def host = ""
+
                         if (env.IS_PR_MERGE == "true") {
-                            // Deploy to production
-                            sh """
-                            ssh -o StrictHostKeyChecking=no ${PRODUCTION_HOST} \\
-                              'docker pull ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST} && \\
-                               docker stop nextflix-production || true && \\
-                               docker rm nextflix-production || true && \\
-                               docker run -d --name nextflix-production -p 3000:3000 -e TMDB_KEY=${TMDB_KEY} ${DOCKER_IMAGE}:${DOCKER_TAG_LATEST}'
-                            """
+                            deployTarget = "Production"
+                            tag = DOCKER_TAG_LATEST
+                            host = PRODUCTION_HOST
                         } else {
-                            // Deploy to staging
-                            sh """
-                            ssh -o StrictHostKeyChecking=no ${STAGING_HOST} \\
-                              'docker stop nextflix-staging || true && \\
-                               docker rm nextflix-staging || true && \\
-                               docker run -d --name nextflix-staging -p 3000:3000 -e TMDB_KEY=${TMDB_KEY} ${DOCKER_IMAGE}:${DOCKER_TAG_STAGING}'
-                            """
+                            deployTarget = "Staging"
+                            tag = DOCKER_TAG_STAGING
+                            host = STAGING_HOST
                         }
+
+                        sh """
+                        ssh -o StrictHostKeyChecking=no ${host} \\
+                          'docker pull ${DOCKER_IMAGE}:${tag} && \\
+                           docker stop nextflix-${deployTarget.toLowerCase()} || true && \\
+                           docker rm nextflix-${deployTarget.toLowerCase()} || true && \\
+                           docker run -d --name nextflix-${deployTarget.toLowerCase()} -p 3000:3000 -e TMDB_KEY=${TMDB_KEY} ${DOCKER_IMAGE}:${tag}'
+                        """
+
+                        // Send Slack notification
+                        def user = sh(script: "git log -1 --pretty=%an", returnStdout: true).trim()
+                        sh """
+                        curl -X POST -H 'Content-type: application/json' --data '{
+                            "text": "✅ ${deployTarget} deployment completed.\\nDeveloper: ${user}\\nDocker Image: ${DOCKER_IMAGE}:${tag}"
+                        }' ${SLACK_WEBHOOK}
+                        """
                     }
                 }
             }
